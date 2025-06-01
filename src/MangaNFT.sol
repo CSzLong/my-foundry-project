@@ -10,39 +10,24 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
     uint256 private _tokenIdCounter;
     uint256 private _lastTimestamp;
     uint256 private _perSecondCounter;
-
+    
     address public platformAddress;
     IERC20 public paymentToken;
     uint256 public mintTimeout = 5 minutes;
     
     mapping(uint256 => mapping(address => uint256)) public mintedPerUser;
-
-    /*
-    struct MangaChapter {
-        string mangaTitle;
-        string chapterTitle;
-        string description;
-        string language;
-        uint256 seriesId;
-        uint256 chapterNumber;
-        uint256 publishTime;
-        uint256 mintTime;
-        uint256 maxPerUser; 
-        address creator;
-        string uri;
-        string copyright;
-        uint256 price;
-        bool isFinal;
-    }*/
+    struct LocalizedText {
+        string zh; 
+        string en; 
+        string jp; 
+    }
     
     struct MangaChapter {
-        string mangaTitle;
-        string description;
-        string language;
+        LocalizedText mangaTitle;
+        LocalizedText description;
         uint256 publishTime;
         uint256 mintTime;
         uint256 maxCopies;
-        uint256 maxPerUser; 
         address creator;
         string uri;
     }
@@ -56,16 +41,21 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
 
     mapping(uint256 => MangaChapter) public mangaChapters;
     mapping(address => PendingPayment[]) public payments;
-
-    event ChapterCreated(uint256 indexed tokenId, address indexed creator, string mangaTitle);
+    
+    event ChapterCreated(
+        uint256 indexed tokenId,
+        address indexed creator,
+        string mangaTitleZh,
+        string mangaTitleEn,
+        string mangaTitleJp
+    );
+        
     event PaymentReceived(address indexed buyer, uint256 indexed tokenId, uint256 amount);
     event ChapterMinted(uint256 indexed tokenId, address indexed to, uint256 mintTime);
     event RefundIssued(address indexed buyer, uint256 indexed tokenId, uint256 amount);
     event BatchMinted(address[] recipients, uint256[] tokenIds);
-    //event ChapterFinalFlagUpdated(uint256 indexed tokenId, bool isFinal);
-    //event ChapterPriceUpdated(uint256 indexed tokenId, uint256 newPrice);
-    event ChapterTitleUpdated(uint256 indexed tokenId, string newTitle);
-    event MangaTitleUpdated(uint256 indexed tokenId, string newTitle);
+    event MangaTitleUpdated(uint256 indexed tokenId, string language, string newTitle);
+    event ChapterDescriptionUpdated(uint256 indexed tokenId, string language, string newDescription);
     event ChapterDescriptionUpdated(uint256 indexed tokenId, string newDescription);
     event PlatformAddressUpdated(address indexed oldAddress, address indexed newAddress);
     event PaymentTokenUpdated(address indexed oldToken, address indexed newToken);
@@ -77,7 +67,7 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
     uint256[] failedTokenIds,
     string[] reasons
     );
-
+    
     modifier onlyPlatform() {
         require(msg.sender == platformAddress, "Only platform can mint");
         _;
@@ -102,110 +92,137 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
         }
 
         _perSecondCounter++;
-
-        // 拼接 tokenId: timestamp * 1e6 + counter (最多6位)
+        
         uint256 tokenId = currentTimestamp * 1e6 + _perSecondCounter;
-
+        
         return tokenId;
     }
 
     function createChapter(
-        string memory mangaTitle,
-        string memory description,
-        string memory language,
-        uint256 publishTime,
+        string memory mangaTitleZh,
+        string memory mangaTitleEn,
+        string memory mangaTitleJp,
+        string memory descriptionZh,
+        string memory descriptionEn,
+        string memory descriptionJp,
         uint256 maxCopies,
-        uint256 maxPerUser, 
         string memory uri_
     ) external returns (uint256) {
         uint256 newTokenId = generateTokenId();
+
+        require(maxCopies > 0 && maxCopies % 5 == 0, "maxCopies must be multiple of 5");
+
+        LocalizedText memory title = LocalizedText({
+            zh: mangaTitleZh,
+            en: mangaTitleEn,
+            jp: mangaTitleJp
+        });
+
+        LocalizedText memory desc = LocalizedText({
+            zh: descriptionZh,
+            en: descriptionEn,
+            jp: descriptionJp
+        });
         
         mangaChapters[newTokenId] = MangaChapter({
-            mangaTitle: mangaTitle,
-            description: description,
-            language: language,
-            publishTime: publishTime,
+            mangaTitle: title,
+            description: desc,
+            publishTime: block.timestamp,
             mintTime:0,
             maxCopies: maxCopies,
-            maxPerUser: maxPerUser, // *** 赋值
             creator: msg.sender,
             uri: uri_
         });
-
-        emit ChapterCreated(newTokenId, msg.sender, mangaTitle);
-        return newTokenId;
-    }
-
-    /*
-    function createChapter(
-        string memory mangaTitle,
-        string memory chapterTitle,
-        string memory description,
-        string memory language,
-        uint256 seriesId,
-        uint256 chapterNumber,
-        uint256 publishTime,
-        uint256 maxCopies,
-        uint256 maxPerUser,
-        string memory uri_,
-        string memory copyright,
-        uint256 price,
-        bool isFinal
-    ) external returns (uint256) {
-        _tokenIdCounter++;
-        uint256 newTokenId = _tokenIdCounter;
-
-        mangaChapters[newTokenId] = MangaChapter({
-            mangaTitle: mangaTitle,
-            chapterTitle: chapterTitle,
-            description: description,
-            language: language,
-            seriesId: seriesId,
-            chapterNumber: chapterNumber,
-            publishTime: publishTime,
-            mintTime: 0,
-            maxCopies: maxCopies,
-            maxPerUser: maxPerUser,
-            creator: msg.sender,
-            uri: uri_,
-            copyright: copyright,
-            price: price,
-            isFinal: isFinal
-        });
-
-        emit ChapterCreated(newTokenId, msg.sender, mangaTitle);
-        return newTokenId;
-    }
-   
-    
-    
-    function payForChapter(uint256 tokenId) external {
-        MangaChapter storage chapter = mangaChapters[tokenId];
-        require(chapter.price > 0, "Chapter is not for sale");
         
-        require(paymentToken.transferFrom(msg.sender, platformAddress, chapter.price), "Payment failed");
+        emit ChapterCreated(
+            newTokenId,
+            msg.sender,
+            mangaTitleZh,
+            mangaTitleEn,
+            mangaTitleJp
+        );
+                
 
-        payments[msg.sender].push(PendingPayment({
-            tokenId: tokenId,
-            timestamp: block.timestamp,
-            amount: chapter.price,
-            minted: false
-        }));
+        uint256 amountToMint = (maxCopies * 4) / 5;
+        _mint(msg.sender, newTokenId, amountToMint, "");
+        mintedPerUser[newTokenId][msg.sender] = amountToMint;
+        mangaChapters[newTokenId].mintTime = block.timestamp;
 
-        emit PaymentReceived(msg.sender, tokenId, chapter.price);
+        emit ChapterMinted(newTokenId, msg.sender, block.timestamp);
+            
+        return newTokenId;
     }
-     */
+
+    function freeMint(address to, uint256 tokenId) public onlyPlatform {
+        require(to != address(0), "Invalid recipient");
+        
+        MangaChapter storage chapter = mangaChapters[tokenId];
+        require(totalSupply(tokenId) < chapter.maxCopies, "No more copies");
+    
+        chapter.mintTime = block.timestamp;
+        _mint(to, tokenId, 1, "");
+        
+        mintedPerUser[tokenId][to] += 1; 
+
+        emit ChapterMinted(tokenId, to, block.timestamp);
+    }
+    
+    
+    function getChapterTitle(uint256 tokenId, string memory lang) external view returns (string memory) {
+        LocalizedText memory title = mangaChapters[tokenId].mangaTitle;
+        if (keccak256(bytes(lang)) == keccak256("zh")) return title.zh;
+        if (keccak256(bytes(lang)) == keccak256("en")) return title.en;
+        if (keccak256(bytes(lang)) == keccak256("jp")) return title.jp;
+        return "";
+    }
+    
+    function updateMangaTitle(
+        uint256 tokenId,
+        string memory language,
+        string memory newTitle
+    ) external {
+        MangaChapter storage chapter = mangaChapters[tokenId];
+        require(msg.sender == chapter.creator, "Only creator can update");
+
+        if (keccak256(bytes(language)) == keccak256(bytes("zh"))) {
+            chapter.mangaTitle.zh = newTitle;
+        } else if (keccak256(bytes(language)) == keccak256(bytes("en"))) {
+            chapter.mangaTitle.en = newTitle;
+        } else if (keccak256(bytes(language)) == keccak256(bytes("jp"))) {
+            chapter.mangaTitle.jp = newTitle;
+        } else {
+            revert("Unsupported language");
+        }
+        
+        emit MangaTitleUpdated(tokenId, language, newTitle);
+    }
+
+    function updateChapterDescription(
+        uint256 tokenId,
+        string memory language,
+        string memory newDescription
+    ) external {
+        MangaChapter storage chapter = mangaChapters[tokenId];
+        require(msg.sender == chapter.creator, "Only creator can update");
+
+        if (keccak256(bytes(language)) == keccak256(bytes("zh"))) {
+            chapter.description.zh = newDescription;
+        } else if (keccak256(bytes(language)) == keccak256(bytes("en"))) {
+            chapter.description.en = newDescription;
+        } else if (keccak256(bytes(language)) == keccak256(bytes("jp"))) {
+            chapter.description.jp = newDescription;
+        } else {
+            revert("Unsupported language");
+        }
+
+        emit ChapterDescriptionUpdated(tokenId, language, newDescription);
+    }
+        
     function mintChapter(address to, uint256 tokenId) public onlyPlatform {
         require(to != address(0), "Invalid recipient");
 
         MangaChapter storage chapter = mangaChapters[tokenId];
         require(totalSupply(tokenId) < chapter.maxCopies, "No more copies");
-        
-        require(
-            mintedPerUser[tokenId][to] < chapter.maxPerUser,
-            "Mint limit per user reached"
-        );
-        
         bool found = false;
         PendingPayment[] storage userPayments = payments[to];
 
@@ -260,10 +277,10 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
     
     function _safeFreeMint(address to, uint256 tokenId) external onlyPlatform {
         require(to != address(0), "Invalid address");
-
+        
         MangaChapter storage chapter = mangaChapters[tokenId];
         require(totalSupply(tokenId) < chapter.maxCopies, "Max supply reached");
-        require(mintedPerUser[tokenId][to] < chapter.maxPerUser, "User mint limit exceeded");
+        
 
         _mint(to, tokenId, 1, "");
         
@@ -325,25 +342,6 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
         super._update(from, to, ids, values); 
     }
     
-    function freeMint(address to, uint256 tokenId) public onlyPlatform {
-        require(to != address(0), "Invalid recipient");
-
-        MangaChapter storage chapter = mangaChapters[tokenId];
-        require(totalSupply(tokenId) < chapter.maxCopies, "No more copies");
-        
-        require(
-            mintedPerUser[tokenId][to] < chapter.maxPerUser,
-            "Mint limit per user reached"
-        );
-        
-        chapter.mintTime = block.timestamp;
-        _mint(to, tokenId, 1, "");
-        
-        mintedPerUser[tokenId][to] += 1; 
-
-        emit ChapterMinted(tokenId, to, block.timestamp);
-    }
-    
     function getChapterInfo(uint256 tokenId) external view returns (MangaChapter memory) {
         return mangaChapters[tokenId];
     }
@@ -366,41 +364,4 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
         emit PaymentTokenUpdated(oldToken, newToken);
     }
     
-    /*
-
-    function updateIsFinal(uint256 tokenId, bool newIsFinal) external {
-        MangaChapter storage chapter = mangaChapters[tokenId];
-        require(msg.sender== chapter.creator, "Only creator can update");
-        chapter.isFinal = newIsFinal;
-        emit ChapterFinalFlagUpdated(tokenId, newIsFinal);
-    }
-
-    function updatePrice(uint256 tokenId, uint256 newPrice) external {
-        MangaChapter storage chapter = mangaChapters[tokenId];
-        require(msg.sender == chapter.creator, "Only creator can update");
-        chapter.price = newPrice;
-        emit ChapterPriceUpdated(tokenId, newPrice);
-    }
-
-    function updateChapterTitle(uint256 tokenId, string memory newTitle) external {
-        MangaChapter storage chapter = mangaChapters[tokenId];
-        require(msg.sender == chapter.creator, "Only creator can update");
-        chapter.chapterTitle = newTitle;
-        emit ChapterTitleUpdated(tokenId, newTitle);
-    }
-    */
-
-    function updateMangaTitle(uint256 tokenId, string memory newTitle) external {
-        MangaChapter storage chapter = mangaChapters[tokenId];
-        require(msg.sender == chapter.creator, "Only creator can update");
-        chapter.mangaTitle = newTitle;
-        emit MangaTitleUpdated(tokenId, newTitle);
-    }
-
-    function updateChapterDescription(uint256 tokenId, string memory newDescription) external {
-        MangaChapter storage chapter = mangaChapters[tokenId];
-        require(msg.sender == chapter.creator, "Only creator can update");
-        chapter.description = newDescription;
-        emit ChapterDescriptionUpdated(tokenId, newDescription);
-    }
 }
