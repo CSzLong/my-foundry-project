@@ -38,9 +38,11 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
         uint256 amount;
         bool minted;
     }
-
+    
     mapping(uint256 => MangaChapter) public mangaChapters;
     mapping(address => PendingPayment[]) public payments;
+    mapping(address => uint256[]) private creatorChapters;
+    
     
     event ChapterCreated(
         uint256 indexed tokenId,
@@ -59,7 +61,7 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
     event ChapterDescriptionUpdated(uint256 indexed tokenId, string newDescription);
     event PlatformAddressUpdated(address indexed oldAddress, address indexed newAddress);
     event PaymentTokenUpdated(address indexed oldToken, address indexed newToken);
-
+    
     event BatchFreeMinted(
     address[] successfulRecipients,
     uint256[] successfulTokenIds,
@@ -111,7 +113,7 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
         uint256 newTokenId = generateTokenId();
 
         require(maxCopies > 0 && maxCopies % 5 == 0, "maxCopies must be multiple of 5");
-
+        
         LocalizedText memory title = LocalizedText({
             zh: mangaTitleZh,
             en: mangaTitleEn,
@@ -141,7 +143,8 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
             mangaTitleEn,
             mangaTitleJp
         );
-                
+
+        creatorChapters[msg.sender].push(newTokenId);        
 
         uint256 amountToMint = (maxCopies * 4) / 5;
         _mint(msg.sender, newTokenId, amountToMint, "");
@@ -245,6 +248,16 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
 
         emit ChapterMinted(tokenId, to, block.timestamp);
     }
+    
+    function getCurrentHeldNFTCountByCreator(address creator) external view returns (uint256 total) {
+        uint256[] memory chapters = creatorChapters[creator];
+        for (uint256 i = 0; i < chapters.length; i++) {
+            uint256 tokenId = chapters[i];
+            total += balanceOf(creator, tokenId); 
+        }
+        return total; 
+    }
+        
     
     function refundIfExpired(address buyer, uint256 tokenId) external {
         PendingPayment[] storage userPayments = payments[buyer];

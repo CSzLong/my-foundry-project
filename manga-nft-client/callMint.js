@@ -20,10 +20,10 @@ async function main() {
   const contract = new ethers.Contract(process.env.MANGA_NFT_ADDRESS, abi, wallet);
   
   // 要 mint 给谁（可以改成你要测试的钱包地址）
-  const toAddress = "0x12E2C1e3A8CA617689A4E4E6d6a098Faf08B8189";
+  const toAddress = "0xdbe41aFD9e285b446735Ca523C53a01Ad98e78C9";
   
   // 要 mint 的 tokenId
-  const tokenId = "87972445196974322379145804029982711346002445201520251042340119774833874900476";
+  const tokenId = "1749001780000001";
   
   // 发起交易
   console.log(`正在 mint tokenId = ${tokenId} 给 ${toAddress}...`);
