@@ -19,7 +19,7 @@ contract MonthlyReport {
         uint256 totalNFTValue;
         uint256 totalTransactions;
     }
-
+    
     struct ReaderData {
         uint256 tokensChargedThisMonth;
         uint256 currentBalance;

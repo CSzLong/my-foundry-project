@@ -52,7 +52,7 @@ async function main() {
     [350, 80],
     [180, 45]
   ];
-
+  
   try {
     const tx1 = await contract.batchUploadCreatorData(monthId, creatorAddresses, creatorDataList);
     await tx1.wait();
