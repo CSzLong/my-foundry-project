@@ -292,6 +292,71 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
         return newTokenId;
     }
    
+    function mintChapter(address to, uint256 tokenId, uint256 amountMinted) public onlyPlatform {
+        require(to != address(0), "Invalid recipient");
+
+        MangaChapter storage chapter = mangaChapters[tokenId];
+        require(totalSupply(tokenId) + amountMinted <= chapter.maxCopies, "No more copies");
+        bool found = false;
+        PendingPayment[] storage userPayments = payments[to];
+
+        for (uint i = 0; i < userPayments.length; i++) {
+            if (
+                userPayments[i].tokenId == tokenId &&
+                !userPayments[i].minted &&
+                block.timestamp <= userPayments[i].timestamp + mintTimeout
+            ) {
+                userPayments[i].minted = true;
+                found = true;
+                break;
+            }
+        }
+        
+        require(found, "No valid payment found");
+        
+        chapter.mintTime = block.timestamp;
+        _mint(to, tokenId, amountMinted, "");
+        
+        emit ChapterMinted(tokenId, to, amountMinted, block.timestamp);
+    }
+    
+    function getCurrentHeldNFTCountByCreator(address creator) external view returns (uint256 total) {
+        uint256[] memory chapters = creatorChapters[creator];
+        for (uint256 i = 0; i < chapters.length; i++) {
+            uint256 tokenId = chapters[i];
+            total += balanceOf(creator, tokenId); 
+        }
+        return total; 
+    }
+        
+    
+    function refundIfExpired(address buyer, uint256 tokenId) external {
+        PendingPayment[] storage userPayments = payments[buyer];
+        for (uint i = 0; i < userPayments.length; i++) {
+            PendingPayment storage p = userPayments[i];
+            if (
+                p.tokenId == tokenId &&
+                !p.minted &&
+                block.timestamp > p.timestamp + mintTimeout
+            ) {
+                uint256 refundAmount = p.amount;
+                p.amount = 0;
+                p.minted = true;
+
+                require(paymentToken.transfer(buyer, refundAmount), "Refund failed");
+                emit RefundIssued(buyer, tokenId, refundAmount);
+                break;
+            }
+        }
+    }
+    
+    function batchMintChapter(address[] calldata recipients, uint256[] calldata tokenIds, uint256[] calldata amountMinteds) external onlyPlatform {
+        require(recipients.length == tokenIds.length, "Array length mismatch");
+        for (uint i = 0; i < recipients.length; i++) {
+            mintChapter(recipients[i], tokenIds[i], amountMinteds[i]);
+        }
+        emit BatchMinted(recipients, tokenIds);
+    }
     
     
     function payForChapter(uint256 tokenId) external {
