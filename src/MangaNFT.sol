@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
+
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -14,18 +15,11 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
     address public platformAddress;
     IERC20 public paymentToken;
     uint256 public mintTimeout = 5 minutes;
-
-    enum Role {
-        Creator,
-        Reader,
-        Investor
-    }
     struct LocalizedText {
         string zh;
         string en;
         string jp;
     }
-
     struct MangaChapter {
         LocalizedText mangaTitle;
         LocalizedText description;
@@ -52,13 +46,11 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
         address recipient;
         uint256 tokenId;
         uint256 amountMinted;
-        Role role;
     }
 
     struct MintSuccess {
         address recipient;
         uint256 tokenId;
-        Role role;
     }
 
     struct MintFailure {
@@ -81,7 +73,7 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
         string mangaTitleEn,
         string mangaTitleJp
     );
-
+    
     event PaymentReceived(
         address indexed buyer,
         uint256 indexed tokenId,
@@ -91,8 +83,7 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
         uint256 indexed tokenId,
         address indexed to,
         uint256 amountMinted,
-        uint256 mintTime,
-        Role role
+        uint256 mintTime
     );
     event RefundIssued(
         address indexed buyer,
@@ -268,8 +259,7 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
             newTokenId,
             msg.sender,
             amountToMint,
-            block.timestamp,
-            Role.Creator
+            block.timestamp
         );
 
         return newTokenId;
@@ -278,8 +268,7 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
     function freeMint(
         address to,
         uint256 tokenId,
-        uint256 amountMinted,
-        Role role
+        uint256 amountMinted
     ) public onlyPlatform {
         require(to != address(0), "Invalid recipient");
 
@@ -292,12 +281,10 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
         chapter.mintTime = block.timestamp;
         _mint(to, tokenId, amountMinted, "");
 
-        if (role == Role.Investor) {
-            _updateOwnership(tokenId, to);
-            investorHeld[to].push(tokenId);
-        }
+        _updateOwnership(tokenId, to);
+        investorHeld[to].push(tokenId);
 
-        emit ChapterMinted(tokenId, to, amountMinted, block.timestamp, role);
+        emit ChapterMinted(tokenId, to, amountMinted, block.timestamp);
     }
 
     function investorRegistration(
@@ -398,15 +385,12 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
             {
                 successes[successCount] = MintSuccess(
                     req.recipient,
-                    req.tokenId,
-                    req.role
+                    req.tokenId
                 );
                 successCount++;
 
-                if (req.role == Role.Investor) {
-                    _updateOwnership(req.tokenId, req.recipient);
-                    investorHeld[req.recipient].push(req.tokenId);
-                }
+                _updateOwnership(req.tokenId, req.recipient);
+                investorHeld[req.recipient].push(req.tokenId);
             } catch Error(string memory reason) {
                 failures[failCount] = MintFailure(
                     req.recipient,
@@ -423,7 +407,7 @@ contract MangaNFT is ERC1155, ERC1155Supply, Ownable {
                 failCount++;
             }
         }
-        
+
         assembly {
             mstore(successes, successCount)
             mstore(failures, failCount)
